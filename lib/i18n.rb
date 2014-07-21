@@ -305,18 +305,32 @@ module I18n
     #   I18n.exception_handler = I18nExceptionHandler.new               # an object
     #   I18n.exception_handler.call(exception, locale, key, options)    # will be called like this
     def handle_exception(handling, exception, locale, key, options)
-      case handling
-      when :raise
-        raise exception.respond_to?(:to_exception) ? exception.to_exception : exception
-      when :throw
-        throw :exception, exception
-      else
-        case handler = options[:exception_handler] || config.exception_handler
-        when Symbol
-          send(handler, exception, locale, key, options)
+      begin
+        case handling
+        when :raise
+          raise exception.respond_to?(:to_exception) ? exception.to_exception : exception
+        when :throw
+          throw :exception, exception
         else
-          handler.call(exception, locale, key, options)
+          case handler = options[:exception_handler] || config.exception_handler
+          when Symbol
+            send(handler, exception, locale, key, options)
+          else
+            handler.call(exception, locale, key, options)
+          end
         end
+      rescue I18n::MissingTranslationData
+        Rails.logger.warn "Translation missing: #{key}"
+        Bugsnag.notify(
+          exception,
+          {
+            severity: "error",
+            locale: locale,
+            key: key,
+            options: options
+          }
+        )
+        key.split('.').last.capitalize.gsub("_", " ")
       end
     end
 
